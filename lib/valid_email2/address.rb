@@ -7,6 +7,7 @@ module ValidEmail2
     attr_accessor :address
 
     ALLOWED_DOMAIN_CHARACTERS_REGEX = /\A[a-z0-9\-.]+\z/i
+    DEFAULT_RECIPIENT_DELIMITER = '+'.freeze
 
     def initialize(address)
       @parse_error = false
@@ -17,6 +18,8 @@ module ValidEmail2
       rescue Mail::Field::ParseError
         @parse_error = true
       end
+
+      @parse_error ||= address_contain_emoticons? @raw_address
     end
 
     def valid?
@@ -37,6 +40,10 @@ module ValidEmail2
       end
     end
 
+    def subaddressed?
+      valid? && address.local.include?(DEFAULT_RECIPIENT_DELIMITER)
+    end
+
     def disposable?
       valid? && domain_is_in?(ValidEmail2.disposable_emails)
     end
@@ -48,13 +55,10 @@ module ValidEmail2
     def valid_mx?
       return false unless valid?
 
-      mx = []
-
       Resolv::DNS.open do |dns|
-        mx.concat dns.getresources(address.domain, Resolv::DNS::Resource::IN::MX)
+        return dns.getresources(address.domain, Resolv::DNS::Resource::IN::MX).size > 0 ||
+               dns.getresources(address.domain, Resolv::DNS::Resource::IN::A).size > 0
       end
-
-      mx.any?
     end
 
     private
@@ -64,6 +68,12 @@ module ValidEmail2
       domain_list.any? { |domain|
         address_domain.end_with?(domain) && address_domain =~ /\A(?:.+\.)*?#{domain}\z/
       }
+    end
+
+    def address_contain_emoticons? email_str
+      return false if email_str.nil?
+
+      email_str.each_char.any? { |char| char.bytesize > 1 }
     end
   end
 end

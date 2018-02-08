@@ -4,6 +4,10 @@ class TestUser < TestModel
   validates :email, 'valid_email_2/email': true
 end
 
+class TestUserSubaddressing < TestModel
+  validates :email, 'valid_email_2/email': {disallow_subaddressing: true}
+end
+
 class TestUserMX < TestModel
   validates :email, 'valid_email_2/email': { mx: true }
 end
@@ -14,10 +18,6 @@ end
 
 class TestUserDisallowBlacklisted < TestModel
   validates :email, 'valid_email_2/email': { blacklist: true }
-end
-
-class BackwardsCompatibleUser < TestModel
-  validates :email, 'valid_email_2/email': true
 end
 
 describe ValidEmail2 do
@@ -58,14 +58,6 @@ describe ValidEmail2 do
 
     it "shouldn't be valid if the domain constains consecutives dots" do
       user = TestUser.new(email: "foo@bar..com")
-      expect(user.valid?).to be_falsey
-    end
-
-    it "still works with the backwards-compatible syntax" do
-      user = BackwardsCompatibleUser.new(email: "foo@bar.com")
-      expect(user.valid?).to be_truthy
-
-      user = BackwardsCompatibleUser.new(email: "foo@bar")
       expect(user.valid?).to be_falsey
     end
   end
@@ -110,9 +102,69 @@ describe ValidEmail2 do
       expect(user.valid?).to be_truthy
     end
 
+    it "should be valid if A records are found" do
+      user = TestUserMX.new(email: "foo@ghs.google.com")
+      expect(user.valid?).to be_truthy
+    end
+
     it "should be invalid if no mx records are found" do
       user = TestUserMX.new(email: "foo@subdomain.gmail.com")
       expect(user.valid?).to be_falsey
     end
+  end
+
+  describe "emoticons emails" do
+    it "should be invalid if email contains emoticon" do
+      email = ValidEmail2::Address.new("foo🙈@gmail.com")
+      expect(email.valid?).to be_falsy
+    end
+  end
+
+  describe "subaddressed emails" do
+
+    describe "::Address::DEFAULT_RECIPIENT_DELIMITER" do
+      it "should be recipient delimiter ('+')" do
+        expect(ValidEmail2::Address::DEFAULT_RECIPIENT_DELIMITER).to eq('+')
+      end
+    end
+
+    describe "::Address#subaddressed?" do
+      it "should be true when address local part contains a recipient delimiter ('+')" do
+        email = ValidEmail2::Address.new("foo+1@gmail.com")
+        expect(email.subaddressed?).to be_truthy
+      end
+
+      it "should be false when address local part contains a recipient delimiter ('+')" do
+        email = ValidEmail2::Address.new("foo@gmail.com")
+        expect(email.subaddressed?).to be_falsey
+      end
+    end
+
+    describe "user validation" do
+      context "subaddressing is allowed (default)" do
+        it "should be valid when address local part does not contain a recipient delimiter ('+')" do
+          user = TestUser.new(email: "foo@gmail.com")
+          expect(user.valid?).to be_truthy
+        end
+
+        it "should be valid when address local part contains a recipient delimiter ('+')" do
+          user = TestUser.new(email: "foo+1@gmail.com")
+          expect(user.valid?).to be_truthy
+        end
+      end
+
+      context "subaddressing is forbidden" do
+        it "should be valid when address local part does not contain a recipient delimiter ('+')" do
+          user = TestUserSubaddressing.new(email: "foo@gmail.com")
+          expect(user.valid?).to be_truthy
+        end
+
+        it "should be invalid when address local part contains a recipient delimiter ('+')" do
+          user = TestUserSubaddressing.new(email: "foo+1@gmail.com")
+          expect(user.valid?).to be_falsey
+        end
+      end
+    end
+
   end
 end
